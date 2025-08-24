@@ -96,64 +96,160 @@ export const PayrollDashboard = () => {
 
       // Advanced filters
       for (const filter of advancedFilters) {
-        const employeeValue = getEmployeeValue(employee, filter.payElement);
-        const filterValue = filter.value;
-        
+        const currentValue = employee[filter.payElement as keyof typeof employee] as number;
+        const compareValue = filter.compareToLastMonth && employee.previousMonth
+          ? employee.previousMonth[filter.payElement as keyof typeof employee.previousMonth] as number
+          : 0;
+
+        let testValue = currentValue;
+
         if (filter.compareToLastMonth && employee.previousMonth) {
-          const previousValue = getEmployeeValue(employee.previousMonth, filter.payElement);
-          const change = employeeValue - previousValue;
-          const changeValue = filter.isPercentage ? (change / previousValue) * 100 : change;
-          
-          if (!compareValues(changeValue, filter.condition, filterValue)) {
-            return false;
+          if (filter.isPercentage) {
+            testValue = compareValue > 0 ? ((currentValue - compareValue) / compareValue) * 100 : 0;
+          } else {
+            testValue = currentValue - compareValue;
           }
-        } else {
-          const comparisonValue = filter.isPercentage ? (employeeValue / employee.totalIncome) * 100 : employeeValue;
-          if (!compareValues(comparisonValue, filter.condition, filterValue)) {
-            return false;
-          }
+        }
+
+        const filterValue = filter.isPercentage && !filter.compareToLastMonth
+          ? (filter.value / 100) * testValue
+          : filter.value;
+
+        switch (filter.condition) {
+          case 'greater':
+            if (testValue <= filterValue) return false;
+            break;
+          case 'less':
+            if (testValue >= filterValue) return false;
+            break;
+          case 'equal':
+            if (Math.abs(testValue - filterValue) > 0.01) return false;
+            break;
         }
       }
 
       return true;
     });
-  }, [employeeData, searchTerm, showChangesOnly, selectedDepartment, activeCard, activeFilters, advancedFilters]);
+  }, [searchTerm, showChangesOnly, selectedDepartment, advancedFilters, employeeData, activeCard, activeFilters]);
 
-  const getEmployeeValue = (employee: any, payElement: string): number => {
-    switch (payElement) {
-      case 'basePay': return employee.basePay;
-      case 'bonus': return employee.bonus;
-      case 'commission': return employee.commission;
-      case 'overtime': return employee.overtime;
-      case 'totalIncome': return employee.totalIncome;
-      case 'deductions': return employee.deductions;
-      case 'takeHomePay': return employee.takeHomePay;
-      case 'paye': return employee.paye;
-      case 'ni': return employee.ni;
-      case 'pension': return employee.pension;
-      case 'studentLoan': return employee.studentLoan;
-      case 'postgradLoan': return employee.postgradLoan;
-      case 'employerCost': return employee.employerCost;
-      case 'employerNI': return employee.employerNI;
-      case 'employerPension': return employee.employerPension;
-      default: return 0;
-    }
+  const handleConfirm = () => {
+    toast({
+      title: "Payroll Confirmed",
+      description: `${payrollPeriod.month} ${payrollPeriod.year} payroll has been confirmed.`,
+    });
   };
 
-  const compareValues = (value: number, condition: string, targetValue: number): boolean => {
-    switch (condition) {
-      case 'greater': return value > targetValue;
-      case 'less': return value < targetValue;
-      case 'equal': return Math.abs(value - targetValue) < 0.01;
-      default: return true;
-    }
+  const handleExport = () => {
+    toast({
+      title: "Excel Download Started",
+      description: "Your payroll report is being downloaded as Excel file.",
+    });
+  };
+
+  const handleImport = () => {
+    toast({
+      title: "Import",
+      description: "Import functionality would open a file dialog.",
+    });
+  };
+
+  const handleApproveEmployee = (employeeId: string) => {
+    setApprovedEmployees(prev => new Set([...prev, employeeId]));
+    toast({
+      title: "Employee Approved",
+      description: "Employee payroll data has been approved.",
+    });
+  };
+
+  const handleApproveAll = () => {
+    const filteredIds = filteredEmployees.map(emp => emp.id);
+    setApprovedEmployees(prev => new Set([...prev, ...filteredIds]));
+    toast({
+      title: "All Approved",
+      description: `Approved ${filteredEmployees.length} employee(s).`,
+    });
+  };
+
+  const handleEmployeeUpdate = (employeeId: string, field: string, value: number) => {
+    setEmployeeData(prev => prev.map(employee => {
+      if (employee.id === employeeId) {
+        const updatedEmployee = { ...employee, [field]: value };
+
+        // Recalculate total income when pay elements change
+        if (['basePay', 'bonus', 'commission', 'overtime', 'gifFlex', 'onCall'].includes(field)) {
+          updatedEmployee.totalIncome =
+            updatedEmployee.basePay +
+            updatedEmployee.bonus +
+            updatedEmployee.commission +
+            updatedEmployee.overtime +
+            updatedEmployee.gifFlex +
+            updatedEmployee.onCall;
+
+          // Recalculate take home pay (simplified calculation)
+          updatedEmployee.takeHomePay = updatedEmployee.totalIncome - updatedEmployee.deductions;
+        }
+
+        return updatedEmployee;
+      }
+      return employee;
+    }));
+
+    const fieldLabels: Record<string, string> = {
+      basePay: 'Base Pay',
+      bonus: 'Bonus',
+      commission: 'Commission',
+      overtime: 'Overtime',
+      gifFlex: 'GIF Flex',
+      onCall: 'OnCall'
+    };
+
+    toast({
+      title: "Payment Updated",
+      description: `${fieldLabels[field] || field} updated for employee.`,
+    });
+  };
+
+  const handleSaveView = (view: Omit<SavedFilterView, 'id'>) => {
+    const newView: SavedFilterView = {
+      ...view,
+      id: Math.random().toString(36).substr(2, 9)
+    };
+    setSavedViews(prev => [...prev, newView]);
+    toast({
+      title: "View Saved",
+      description: `Filter view "${view.name}" has been saved.`,
+    });
+  };
+
+  const handleLoadView = (view: SavedFilterView) => {
+    setAdvancedFilters([...view.filters]);
+    setShowChangesOnly(view.basicFilters.showChangesOnly);
+    setSelectedDepartment(view.basicFilters.department);
+    toast({
+      title: "View Loaded",
+      description: `Applied filter view "${view.name}".`,
+    });
   };
 
   const handleCardClick = (cardId: string) => {
+    // Handle main cards that switch table views
+    if (['gross-pay', 'deductions', 'employer-cost', 'total'].includes(cardId)) {
+      setCurrentView(cardId as 'gross-pay' | 'deductions' | 'employer-cost' | 'total');
+      setActiveCard(undefined); // Clear filter when switching views
+      return;
+    }
+
+    // Handle filter cards
     if (activeCard === cardId) {
+      // Clicking the same card deactivates it
       setActiveCard(undefined);
     } else {
+      // Clicking a different card activates it
       setActiveCard(cardId);
+      // Clear other filters when card is selected for clarity
+      setShowChangesOnly(false);
+      setSelectedDepartment('all');
+      setSearchTerm('');
     }
   };
 
@@ -161,133 +257,100 @@ export const PayrollDashboard = () => {
     if (active) {
       setActiveFilters(prev => [...prev, filterId]);
     } else {
-      setActiveFilters(prev => prev.filter(f => f !== filterId));
+      setActiveFilters(prev => prev.filter(id => id !== filterId));
+    }
+    // Clear basic filters for clarity
+    setShowChangesOnly(false);
+    setSelectedDepartment('all');
+    setActiveCard(undefined);
+  };
+
+  const handleAdvancedFilters = () => {
+    setShowAdvancedFilters(true);
+  };
+
+  const renderCurrentTable = () => {
+    const commonProps = {
+      employees: filteredEmployees,
+      approvedEmployees,
+      onEmployeeApproval: (id: string, approved: boolean) => {
+        if (approved) {
+          setApprovedEmployees(prev => new Set([...prev, id]));
+        } else {
+          setApprovedEmployees(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(id);
+            return newSet;
+          });
+        }
+      },
+      onBulkApproval: (approved: boolean) => {
+        if (approved) {
+          setApprovedEmployees(new Set(filteredEmployees.map(emp => emp.id)));
+        } else {
+          setApprovedEmployees(new Set());
+        }
+      },
+    };
+
+    const incomeProps = {
+      ...commonProps,
+      onEmployeeUpdate: handleEmployeeUpdate,
+    };
+
+    switch (currentView) {
+      case 'deductions':
+        return <DeductionsTable {...commonProps} />;
+      case 'employer-cost':
+        return <EmployerCostTable {...commonProps} />;
+      case 'total':
+        return <TotalViewTable {...incomeProps} />;
+      case 'gross-pay':
+      default:
+        // For the gross pay view, we render different tables based on view mode
+        if (viewMode === 'compact') {
+          return <CompactTable {...incomeProps} currentView={currentView} onViewChange={setCurrentView} />;
+        } else {
+          return <DetailedTable {...incomeProps} />;
+        }
     }
   };
 
-  const handleConfirmPayroll = () => {
-    toast({
-      title: "Payroll Confirmed",
-      description: "The payroll has been successfully confirmed and is ready for processing.",
-    });
-  };
-
-  const handleEmployeeApproval = (employeeId: string, approved: boolean) => {
-    if (approved) {
-      setApprovedEmployees(prev => new Set([...prev, employeeId]));
-    } else {
-      setApprovedEmployees(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(employeeId);
-        return newSet;
-      });
-    }
-  };
-
-  const handleBulkApproval = (approved: boolean) => {
-    if (approved) {
-      setApprovedEmployees(new Set(filteredEmployees.map(emp => emp.id)));
-    } else {
-      setApprovedEmployees(new Set());
-    }
-  };
-
-  const handleAdvancedFilterApply = (filters: AdvancedFilter[]) => {
-    setAdvancedFilters(filters);
-    setShowAdvancedFilters(false);
-  };
-
-  const handleSaveView = (view: SavedFilterView) => {
-    setSavedViews(prev => [...prev, view]);
-    toast({
-      title: "View Saved",
-      description: `The view "${view.name}" has been saved successfully.`,
-    });
-  };
-
-  const renderTable = () => {
-    if (viewMode === 'compact') {
-      return (
-        <CompactTable
-          employees={filteredEmployees}
-          approvedEmployees={approvedEmployees}
-          onEmployeeApproval={handleEmployeeApproval}
-          currentView={currentView}
-          onViewChange={setCurrentView}
-          onBulkApproval={handleBulkApproval}
-        />
-      );
-    } else {
-      switch (currentView) {
-        case 'gross-pay':
-          return (
-            <DetailedTable
-              employees={filteredEmployees}
-              approvedEmployees={approvedEmployees}
-              onEmployeeApproval={handleEmployeeApproval}
-              onBulkApproval={handleBulkApproval}
-            />
-          );
-        case 'deductions':
-          return (
-            <DeductionsTable
-              employees={filteredEmployees}
-              approvedEmployees={approvedEmployees}
-              onEmployeeApproval={handleEmployeeApproval}
-              onBulkApproval={handleBulkApproval}
-            />
-          );
-        case 'employer-cost':
-          return (
-            <EmployerCostTable
-              employees={filteredEmployees}
-              approvedEmployees={approvedEmployees}
-              onEmployeeApproval={handleEmployeeApproval}
-              onBulkApproval={handleBulkApproval}
-            />
-          );
-        case 'total':
-          return (
-            <TotalViewTable
-              employees={filteredEmployees}
-              approvedEmployees={approvedEmployees}
-              onEmployeeApproval={handleEmployeeApproval}
-              onBulkApproval={handleBulkApproval}
-            />
-          );
-        default:
-          return (
-            <DetailedTable
-              employees={filteredEmployees}
-              approvedEmployees={approvedEmployees}
-              onEmployeeApproval={handleEmployeeApproval}
-              onBulkApproval={handleBulkApproval}
-            />
-          );
-      }
+  const getViewTitle = () => {
+    switch (currentView) {
+      case 'deductions':
+        return 'Deductions Breakdown';
+      case 'employer-cost':
+        return 'Employer Cost Breakdown';
+      case 'total':
+        return 'Total View - All Payroll Details';
+      case 'gross-pay':
+      default:
+        return 'Income Details';
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-[1400px] mx-auto p-4 space-y-6">
+      <div className="max-w-7xl mx-auto">
         <PayrollHeader
           period={payrollPeriod}
-          onConfirm={handleConfirmPayroll}
+          onConfirm={handleConfirm}
           searchValue={searchTerm}
           onSearchChange={setSearchTerm}
           viewMode={viewMode}
           onViewModeChange={handleViewModeChange}
           activeFilters={activeFilters}
           onFilterChange={handleFilterChange}
-          onAdvancedFilters={() => setShowAdvancedFilters(true)}
+          onAdvancedFilters={handleAdvancedFilters}
+          onDownload={handleExport}
         />
 
         <StaticTopSection
           summary={payrollSummary}
-          employees={employeeData}
+          employees={employees}
           filteredEmployeeCount={filteredEmployees.length}
-          totalEmployeeCount={employeeData.length}
+          totalEmployeeCount={employees.length}
           onCardClick={handleCardClick}
           activeCard={activeCard}
           approvedEmployees={approvedEmployees}
@@ -295,43 +358,26 @@ export const PayrollDashboard = () => {
           viewMode={viewMode}
         />
 
-        {!showAdvancedFilters && (
-          <TableToolbar
-            searchValue={searchTerm}
-            onSearchChange={setSearchTerm}
-            viewMode={viewMode}
-            onViewModeChange={handleViewModeChange}
-            activeFilters={activeFilters}
-            onFilterChange={handleFilterChange}
-            onAdvancedFilters={() => setShowAdvancedFilters(true)}
-          />
-        )}
 
         {showAdvancedFilters && (
           <AdvancedFilterPanel
             filters={advancedFilters}
-            onFiltersChange={handleAdvancedFilterApply}
-            onCancel={() => setShowAdvancedFilters(false)}
+            onFiltersChange={setAdvancedFilters}
             savedViews={savedViews}
             onSaveView={handleSaveView}
+            onLoadView={handleLoadView}
+            onCancel={() => setShowAdvancedFilters(false)}
             currentFilters={{
               showChangesOnly,
               department: selectedDepartment,
-              employmentType: 'all',
-              searchTerm
+              employmentType: 'all'
             }}
           />
         )}
 
-        {renderTable()}
-
-        {filteredEmployees.length > 0 && (
-          <div className="flex justify-end mt-6">
-            <Button onClick={handleConfirmPayroll} size="lg">
-              Confirm Payroll
-            </Button>
-          </div>
-        )}
+        <div className="bg-background border border-border rounded-lg">
+          {renderCurrentTable()}
+        </div>
       </div>
     </div>
   );

@@ -181,6 +181,8 @@ export const employees: Employee[] = [
 ];
 
 export const payrollPeriod: PayrollPeriod = {
+  month: 'January',
+  year: '2024',
   startDate: '2024-01-01',
   endDate: '2024-01-31',
   payDate: '2024-02-01',

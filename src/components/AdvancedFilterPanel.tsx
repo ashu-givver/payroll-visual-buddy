@@ -10,7 +10,15 @@ interface AdvancedFilterPanelProps {
   currentFilters: any;
 }
 
-export const AdvancedFilterPanel = ({ onCancel }: AdvancedFilterPanelProps) => {
+export const AdvancedFilterPanel = ({ 
+  filters,
+  onFiltersChange,
+  onCancel,
+  savedViews,
+  onSaveView,
+  currentFilters,
+  onLoadView
+}: AdvancedFilterPanelProps & { onLoadView?: (view: SavedFilterView) => void }) => {
   return (
     <div className="p-4 bg-card border rounded-lg">
       <h3 className="text-lg font-semibold mb-4">Advanced Filters</h3>

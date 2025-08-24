@@ -76,6 +76,8 @@ export interface SavedFilterView {
 }
 
 export interface PayrollPeriod {
+  month: string;
+  year: string;
   startDate: string;
   endDate: string;
   payDate: string;
